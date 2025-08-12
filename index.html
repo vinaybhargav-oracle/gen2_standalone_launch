@@ -1,0 +1,181 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SMART on FHIR – Standalone Launch (Provider)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; }
+    code { background: #f5f5f5; padding: 0.2rem 0.4rem; border-radius: 4px; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>SMART on FHIR – Standalone Launch (Provider)</h1>
+  <div id="out" class="muted">Loading…</div>
+
+<script>
+/**
+ * --- CONFIG ---
+ */
+const CLIENT_ID   = "<YOUR_CLIENT_ID>"; // From Cerner Console
+const REDIRECT_URI = "https://vinaybhargav-oracle.github.io/gen2_standalone_launch/";
+// Cerner requires explicit user scopes (no wildcards)
+const SCOPE = "openid fhirUser user/Patient.read user/Observation.read online_access";
+
+/**
+ * --- HELPERS ---
+ */
+const enc = new TextEncoder();
+function randString(len=64) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  for (let i=0;i<len;i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+  return result;
+}
+async function sha256(str) {
+  const buf = await crypto.subtle.digest("SHA-256", enc.encode(str));
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function qs(obj) { return new URLSearchParams(obj).toString(); }
+function getParam(name){ return new URL(location.href).searchParams.get(name); }
+function setOut(html){ document.getElementById("out").innerHTML = html; }
+const store = {
+  set(k,v){ sessionStorage.setItem(k, JSON.stringify(v)); },
+  get(k){ const v = sessionStorage.getItem(k); return v ? JSON.parse(v) : null; },
+  del(k){ sessionStorage.removeItem(k); }
+};
+
+/**
+ * --- MAIN FLOW ---
+ */
+(async function main(){
+  const iss = getParam("iss");
+  const code = getParam("code");
+  const state = getParam("state");
+
+  if (!iss) {
+    setOut(`
+      <p>Add <code>?iss=&lt;FHIR_BASE_URL&gt;</code> to the URL to start.</p>
+      <p>Example (Cerner secure provider sandbox):</p>
+      <p><code>${REDIRECT_URI}?iss=https://fhir-ehr-code.cerner.com/r4/ec2458f2-1e24-41c8-b71b-0e701af7583d</code></p>
+    `);
+    return;
+  }
+
+  // Discover SMART configuration
+  const smartCfgUrl = iss.replace(/\/+$/,"") + "/.well-known/smart-configuration";
+  let smart;
+  try {
+    smart = await fetch(smartCfgUrl).then(r => r.json());
+  } catch (e) {
+    setOut(`<p>SMART discovery failed: <code>${e.message}</code></p>`);
+    return;
+  }
+
+  // If coming back from auth server
+  if (code) {
+    const saved = store.get("pkce");
+    if (!saved || saved.state !== state) {
+      setOut(`<p>State mismatch or missing PKCE data.</p>`);
+      return;
+    }
+    try {
+      const tokenResp = await fetch(smart.token_endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: qs({
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: REDIRECT_URI,
+          client_id: CLIENT_ID,
+          code_verifier: saved.verifier
+        })
+      });
+      const tok = await tokenResp.json();
+      if (tok.error) throw new Error(tok.error_description || tok.error);
+
+      store.set("tokens", { ...tok, iss });
+      history.replaceState({}, "", REDIRECT_URI + "?iss=" + encodeURIComponent(iss));
+      await showSession(smart, tok, iss);
+    } catch (e) {
+      setOut(`<p>Token exchange failed: <code>${e.message}</code></p>`);
+    }
+    return;
+  }
+
+  // First leg: build auth URL
+  const verifier = randString(64);
+  const challenge = await sha256(verifier);
+  const appState = randString(16);
+
+  store.set("pkce", { verifier, state: appState });
+
+  const authParams = {
+    response_type: "code",
+    client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    scope: SCOPE,
+    state: appState,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    aud: iss // Cerner requires aud param
+  };
+
+  const authUrl = smart.authorization_endpoint + "?" + qs(authParams);
+  setOut(`<p>Redirecting to authorization server…</p>`);
+  location.href = authUrl;
+})();
+
+/**
+ * --- SHOW SESSION ---
+ */
+async function showSession(smart, tok, iss) {
+  // Try userinfo to get fhirUser
+  let fhirUser = null;
+  if (smart.userinfo_endpoint && tok.access_token) {
+    try {
+      const ui = await fetch(smart.userinfo_endpoint, {
+        headers: { "Authorization": "Bearer " + tok.access_token }
+      }).then(r => r.json());
+      fhirUser = ui.fhirUser || null;
+    } catch {}
+  }
+  // Fallback: decode id_token
+  if (!fhirUser && tok.id_token) {
+    const parts = tok.id_token.split(".");
+    if (parts.length === 3) {
+      try {
+        const payload = JSON.parse(atob(parts[1].replace(/-/g,"+").replace(/_/g,"/")));
+        fhirUser = payload.fhirUser || null;
+      } catch {}
+    }
+  }
+
+  let userHtml = `<li><strong>fhirUser</strong>: <em>not provided</em></li>`;
+  if (fhirUser) {
+    try {
+      const res = await fetch(fhirUser, {
+        headers: { "Authorization": "Bearer " + tok.access_token }
+      });
+      const resource = await res.json();
+      userHtml = `<li><strong>fhirUser</strong>: <code>${fhirUser}</code> (${resource.resourceType} ${resource.id || ""})</li>`;
+    } catch {
+      userHtml = `<li><strong>fhirUser</strong>: <code>${fhirUser}</code></li>`;
+    }
+  }
+
+  setOut(`
+    <h2>Session</h2>
+    <ul>
+      ${userHtml}
+      <li><strong>FHIR base</strong>: <code>${iss}</code></li>
+      <li><strong>Access token</strong>: received (${tok.token_type || "Bearer"})</li>
+    </ul>
+    <p class="muted">Now you can use the token to query this FHIR server.</p>
+  `);
+}
+</script>
+</body>
+</html>
