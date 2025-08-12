@@ -18,9 +18,8 @@
 /**
  * --- CONFIG ---
  */
-const CLIENT_ID    = "a494da60-3f78-4ea9-bcbc-6a2e943117b6"; // set this to your Cerner/Oracle Health client ID
+const CLIENT_ID    = "a494da60-3f78-4ea9-bcbc-6a2e943117b6"; // your Cerner/Oracle Health client ID
 const REDIRECT_URI = "https://vinaybhargav-oracle.github.io/gen2_standalone_launch/";
-// Cerner/Oracle Health: explicit user scopes (no wildcards)
 const SCOPE        = "openid fhirUser user/Patient.read user/Observation.read online_access";
 
 /**
@@ -41,31 +40,33 @@ function qs(obj){ return new URLSearchParams(obj).toString(); }
 function getParam(n){ return new URL(location.href).searchParams.get(n); }
 function setOut(html){ document.getElementById("out").innerHTML = html; }
 const store = {
-  set(k,v){ sessionStorage.setItem(k, JSON.stringify(v)); },
-  get(k){ const v = sessionStorage.getItem(k); return v ? JSON.parse(v) : null; },
-  del(k){ sessionStorage.removeItem(k); }
+  set(k,v){ sessionStorage.setItem(k, JSON.stringify(v)); localStorage.setItem(k, JSON.stringify(v)); },
+  get(k){ const vs = sessionStorage.getItem(k) || localStorage.getItem(k); return vs ? JSON.parse(vs) : null; },
+  del(k){ sessionStorage.removeItem(k); localStorage.removeItem(k); }
 };
 
 /**
  * --- MAIN FLOW ---
- * Supports both:
- *  1) Initial standalone start: ?iss=...
- *  2) OAuth callback: ?code=...&state=... (no iss)  → recover iss from sessionStorage
  */
 (async function main(){
   let iss   = getParam("iss");
   const code  = getParam("code");
   const state = getParam("state");
 
-  // If we're on the OAuth callback without iss, recover iss from stored PKCE bundle
+  // Recover iss if missing
   if (!iss && code) {
     const saved = store.get("pkce");
     if (saved && saved.iss) {
       iss = saved.iss;
+    } else if (state) {
+      try {
+        const json = atob(state.replace(/-/g,'+').replace(/_/g,'/'));
+        const payload = JSON.parse(json);
+        if (payload.iss) iss = payload.iss;
+      } catch (_) {}
     }
   }
 
-  // If still no iss and no code, show instructions
   if (!iss && !code) {
     setOut(`
       <p>Add <code>?iss=&lt;FHIR_BASE_URL&gt;</code> to the URL to start.</p>
@@ -75,12 +76,12 @@ const store = {
     return;
   }
 
-  // Discover SMART configuration (needs iss)
   if (!iss) {
     setOut(`<p>Missing <code>iss</code> and could not recover it. Please relaunch with <code>?iss=...</code>.</p>`);
     return;
   }
 
+  // Discover SMART configuration
   const smartCfgUrl = iss.replace(/\/+$/,"") + "/.well-known/smart-configuration";
   let smart;
   try {
@@ -92,7 +93,7 @@ const store = {
     return;
   }
 
-  // If coming back from auth server with a code: exchange it
+  // If coming back from auth server
   if (code) {
     const saved = store.get("pkce");
     if (!saved || saved.state !== state) {
@@ -115,7 +116,6 @@ const store = {
       if (tok.error) throw new Error(tok.error_description || tok.error);
 
       store.set("tokens", { ...tok, iss });
-      // Clean URL but keep iss for future
       history.replaceState({}, "", REDIRECT_URI + "?iss=" + encodeURIComponent(iss));
       await showSession(smart, tok, iss);
     } catch (e) {
@@ -124,10 +124,12 @@ const store = {
     return;
   }
 
-  // First leg (no code yet): start authorization with PKCE and store iss+state+verifier
+  // First leg
   const verifier  = randString(64);
   const challenge = await sha256(verifier);
-  const appState  = randString(16);
+  const statePayload = { s: randString(16), iss };
+  const appState = btoa(JSON.stringify(statePayload))
+                     .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   store.set("pkce", { verifier, state: appState, iss });
 
   const authParams = {
@@ -138,7 +140,7 @@ const store = {
     state: appState,
     code_challenge: challenge,
     code_challenge_method: "S256",
-    aud: iss // Cerner/Oracle Health requires 'aud' = FHIR base
+    aud: iss
   };
 
   const authUrl = smart.authorization_endpoint + "?" + qs(authParams);
@@ -150,7 +152,6 @@ const store = {
  * --- SHOW SESSION ---
  */
 async function showSession(smart, tok, iss) {
-  // Try userinfo first for fhirUser
   let fhirUser = null;
   if (smart.userinfo_endpoint && tok.access_token) {
     try {
@@ -160,7 +161,6 @@ async function showSession(smart, tok, iss) {
       fhirUser = ui.fhirUser || null;
     } catch {}
   }
-  // Fallback to id_token claim
   if (!fhirUser && tok.id_token) {
     const parts = tok.id_token.split(".");
     if (parts.length === 3) {
@@ -189,7 +189,6 @@ async function showSession(smart, tok, iss) {
       <li><strong>FHIR base</strong>: <code>${iss}</code></li>
       <li><strong>Access token</strong>: received (${tok.token_type || "Bearer"})</li>
     </ul>
-    <p class="muted">You can now call FHIR endpoints with the access token.</p>
   `);
 }
 </script>
