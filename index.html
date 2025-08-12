@@ -1,24 +1,48 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>SMART on FHIR – Standalone Launch (Provider)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; }
-    code { background: #f5f5f5; padding: 0.15rem 0.35rem; border-radius: 4px; }
-    .muted { color: #666; }
-    .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
-    input[type="text"] { padding: .5rem .6rem; border-radius: 8px; border: 1px solid #ccc; min-width: 240px; }
-    button { padding: .5rem .8rem; border-radius: 10px; border: 1px solid #bbb; cursor: pointer; }
-    button:disabled { opacity: .6; cursor: not-allowed; }
-    .card { border: 1px solid #e0e0e0; border-radius: 12px; padding: 1rem; margin: 1rem 0; }
-    .list { margin: .25rem 0 0 1.25rem; }
-    .ok { color: #137333; }
-    .warn { color: #b06000; }
-    .err { color: #b00020; }
-    pre { background: #f7f7f9; padding: .75rem; border-radius: 8px; overflow: auto; }
+    /* Light/Dark themed, but readable in both */
+    :root{
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted:#666;
+      --card:#ffffff;
+      --border:#e0e0e0;
+      --code:#f6f6f6;
+      --accent:#0b67c2;
+      --warn:#b06000;
+      --err:#b00020;
+      --ok:#137333;
+      --shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#0f1115; --fg:#f4f4f5; --muted:#a0a0a0;
+        --card:#141821; --border:#2a2f3a; --code:#1b2030;
+        --shadow: 0 2px 12px rgba(0,0,0,.35);
+      }
+    }
+    html, body { background: var(--bg); color: var(--fg); }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { margin: 0 0 1rem; }
+    h2 { margin: 1.25rem 0 .5rem; }
+    .muted{ color: var(--muted); }
+    .card{ background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; box-shadow: var(--shadow); margin: 1rem 0; }
+    .list{ margin: .25rem 0 0 1.25rem; }
+    .row{ display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; }
+    input[type="text"]{ background: var(--card); color: var(--fg); border:1px solid var(--border); border-radius:8px; padding:.5rem .6rem; min-width:240px; }
+    button{ background:transparent; color:var(--fg); border:1px solid var(--border); border-radius:10px; padding:.5rem .8rem; cursor:pointer; }
+    button:hover{ border-color:#9aa3af; }
+    button:disabled{ opacity:.6; cursor:not-allowed; }
+    code{ background: var(--code); padding:.15rem .35rem; border-radius:4px; }
+    pre{ background: var(--code); padding:.75rem; border-radius:8px; overflow:auto; }
+    .ok{ color:var(--ok); } .warn{ color:var(--warn);} .err{ color:var(--err);}
+    .kv{ display:grid; grid-template-columns: 220px 1fr; gap:.35rem .75rem; }
+    .kv div:nth-child(odd){ color:var(--muted); }
   </style>
 </head>
 <body>
@@ -27,6 +51,20 @@
   <div id="out" class="muted">Loading…</div>
 
   <div id="app" style="display:none">
+    <!-- Guaranteed calls -->
+    <div class="card">
+      <h2>Server & Session (Guaranteed Calls)</h2>
+      <div class="kv" id="guaranteed">
+        <div>FHIR base</div><div><code id="gv-iss"></code></div>
+        <div>Access token</div><div id="gv-token" class="ok">received</div>
+        <div>SMART auth endpoint</div><div><code id="gv-auth"></code></div>
+        <div>SMART token endpoint</div><div><code id="gv-tokenep"></code></div>
+        <div>CapabilityStatement</div><div id="gv-cap" class="muted">loading…</div>
+        <div>UserInfo</div><div id="gv-ui" class="muted">loading…</div>
+      </div>
+    </div>
+
+    <!-- Quick patient tools (may depend on tenant data/policies) -->
     <div class="card">
       <h2>Quick Patient Search</h2>
       <div class="row">
@@ -54,10 +92,11 @@
 
 <script>
 /* ===================== CONFIG ===================== */
-const CLIENT_ID    = "7359e531-5603-483f-950e-bb5ce9ef3c63"; // your Cerner client id
-const REDIRECT_URI = "https://vinaybhargav-oracle.github.io/gen2_standalone_launch/"; // exact match
+const CLIENT_ID    = "7359e531-5603-483f-950e-bb5ce9ef3c63"; // your SMART v2 client id
+const REDIRECT_URI = "https://vinaybhargav-oracle.github.io/gen2_standalone_launch/"; // must match registration
+// Include 'profile' so userinfo yields richer claims; keep v2 resource scopes for your buttons
 const SCOPE = [
-  "openid","fhirUser",
+  "openid","profile","fhirUser",
   "user/Practitioner.rs",
   "user/Patient.rs",
   "user/Observation.rs",
@@ -81,16 +120,13 @@ const store = {
   del(k){ sessionStorage.removeItem(k); localStorage.removeItem(k); }
 };
 
-window.debug = {
-  tokens(){ return store.get("tokens"); },
-  pkce(){ return store.get("pkce"); }
-};
+window.debug = { tokens(){ return store.get("tokens"); }, pkce(){ return store.get("pkce"); } };
 
 /* Small FHIR GET helper */
 async function fhirGet(url, token) {
   const r = await fetch(url, { headers: { Authorization: "Bearer " + token, Accept: "application/fhir+json" }});
   const body = await r.json().catch(() => ({}));
-  return { status: r.status, body };
+  return { status: r.status, body, headers: r.headers };
 }
 
 /* ===================== MAIN ===================== */
@@ -111,7 +147,7 @@ async function fhirGet(url, token) {
   if (!iss && !code) {
     setOut(`
       <p>Add <code>?iss=&lt;FHIR_BASE_URL&gt;</code> to the URL to start.</p>
-      <p>Example (Cerner secure provider sandbox):</p>
+      <p>Example:</p>
       <p><code>${REDIRECT_URI}?iss=https://fhir-ehr-code.cerner.com/r4/ec2458f2-1e24-41c8-b71b-0e701af7583d</code></p>
     `);
     return;
@@ -142,8 +178,9 @@ async function fhirGet(url, token) {
       });
       const tok = await r.json();
       if (tok.error) throw new Error(tok.error_description || tok.error);
-      store.set("tokens", { ...tok, iss });
-      window.__tokens = { ...tok, iss }; // debug helper
+
+      store.set("tokens", { ...tok, iss, userinfo_endpoint: smart.userinfo_endpoint });
+      window.__tokens = { ...tok, iss, userinfo_endpoint: smart.userinfo_endpoint }; // debug helper
       history.replaceState({}, "", REDIRECT_URI + "?iss=" + encodeURIComponent(iss));
       await renderSession(smart, tok, iss);
     } catch (e) {
@@ -176,48 +213,62 @@ async function fhirGet(url, token) {
 
 /* ===================== UI RENDER & ACTIONS ===================== */
 async function renderSession(smart, tok, iss) {
-  // fhirUser
-  let fhirUser = null;
-  if (smart.userinfo_endpoint && tok.access_token) {
-    try { const ui = await fhirGet(smart.userinfo_endpoint, tok.access_token); fhirUser = ui.body.fhirUser || null; } catch {}
-  }
-  if (!fhirUser && tok.id_token) {
-    const parts = tok.id_token.split(".");
-    if (parts.length===3) { try { const payload = JSON.parse(atob(parts[1].replace(/-/g,"+").replace(/_/g,"/"))); fhirUser = payload.fhirUser || null; } catch {} }
-  }
+  // Guaranteed: show discovery (auth/token endpoints)
+  document.getElementById("gv-iss").textContent = iss;
+  document.getElementById("gv-auth").textContent = smart.authorization_endpoint || "(n/a)";
+  document.getElementById("gv-tokenep").textContent = smart.token_endpoint || "(n/a)";
 
-  // Try to read Practitioner (optional)
-  let practitionerNote = "";
-  if (fhirUser) {
-    try {
-      const fu = await fhirGet(fhirUser, tok.access_token);
-      if (fu.body?.resourceType === "OperationOutcome") {
-        practitionerNote = ` <span class="muted">(no read access; add <code>user/Practitioner.read</code>)</span>`;
-      } else if (fu.body?.resourceType) {
-        practitionerNote = ` (${fu.body.resourceType} ${safe(fu.body.id,"")})`;
+  // CapabilityStatement (very reliable)
+  (async ()=>{
+    const { status, body } = await fhirGet(iss.replace(/\/+$/,"") + "/metadata", tok.access_token);
+    const capEl = document.getElementById("gv-cap");
+    if (body?.resourceType === "CapabilityStatement") {
+      const sw = body.software?.name ? `${body.software.name} ${body.software.version||""}`.trim() : "unknown";
+      capEl.innerHTML = `<span class="ok">ok</span> — fhirVersion <code>${body.fhirVersion||"?"}</code>, software <code>${sw}</code>`;
+    } else {
+      capEl.innerHTML = `<span class="warn">unexpected</span> — status ${status} (${body?.resourceType||"?"})`;
+    }
+  })();
+
+  // UserInfo (works with openid; profile helps return name)
+  (async ()=>{
+    const uiEl = document.getElementById("gv-ui");
+    if (!smart.userinfo_endpoint){ uiEl.textContent = "no userinfo endpoint advertised"; return; }
+    try{
+      const { status, body } = await fhirGet(smart.userinfo_endpoint, tok.access_token);
+      if (status === 200 && body?.sub) {
+        const nm = body.name || body.preferred_username || "";
+        const fu = body.fhirUser ? ` • fhirUser: <code>${body.fhirUser}</code>` : "";
+        uiEl.innerHTML = `<span class="ok">ok</span> — sub <code>${body.sub}</code>${nm?` • ${nm}`:""}${fu}`;
+      } else {
+        uiEl.innerHTML = `<span class="warn">no claims</span> — status ${status}`;
       }
-    } catch {}
-  }
+    }catch(e){
+      uiEl.innerHTML = `<span class="warn">failed</span>`;
+    }
+  })();
 
+  // Session header + panel
   setOut(`
     <h2>Session</h2>
     <ul class="list">
-      <li><strong>fhirUser</strong>: ${fhirUser ? `<code>${fhirUser}</code>${practitionerNote}` : "<em>not provided</em>"}</li>
+      <li><strong>fhirUser</strong>: <em>resolved via userinfo/id_token if provided</em></li>
       <li><strong>FHIR base</strong>: <code>${iss}</code></li>
       <li><strong>Access token</strong>: received (${tok.token_type || "Bearer"})</li>
     </ul>
-    <p class="muted">Use the tools below to run a quick patient search and pull a few resources.</p>
+    <p class="muted">Guaranteed calls above should succeed broadly. Patient tools below depend on tenant data & policies.</p>
   `);
 
   // enable app panel
-  const appEl = document.getElementById("app");
-  show(appEl);
+  show(document.getElementById("app"));
 
   // Debug dump
-  const dbg = document.getElementById("dbg");
-  dbg.textContent = JSON.stringify({ iss, hasToken: !!tok.access_token, scope: tok.scope }, null, 2);
+  document.getElementById("dbg").textContent = JSON.stringify(
+    { iss, hasToken: !!tok.access_token, scope: tok.scope, userinfo_endpoint: smart.userinfo_endpoint || null },
+    null, 2
+  );
 
-  // Wire up actions
+  // Patient/Observation/Condition helpers (may depend on tenant)
   const q = document.getElementById("q");
   const btnSearch = document.getElementById("btnSearch");
   const msg = document.getElementById("searchMsg");
@@ -229,11 +280,7 @@ async function renderSession(smart, tok, iss) {
   const dataLines = document.getElementById("dataLines");
 
   let currentPatientId = null;
-
-  function printLines(lines){
-    dataLines.innerHTML = lines.map(l => `<div>${l}</div>`).join("");
-    show(dataOut);
-  }
+  function printLines(lines){ dataLines.innerHTML = lines.map(l => `<div>${l}</div>`).join(""); show(dataOut); }
 
   btnSearch.onclick = async () => {
     hide(dataOut); dataLines.innerHTML = "";
@@ -241,7 +288,7 @@ async function renderSession(smart, tok, iss) {
     const name = (q.value || "").trim();
     if (name.length < 3) { msg.textContent = "Enter ≥ 3 characters"; return; }
     msg.textContent = "Searching…";
-    const url = iss.replace(/\/+$/,"") + `/Patient?name=${encodeURIComponent(name)}&_count=1`;
+    const url = iss.replace(/\/+$/,"") + `/Patient?name=${encodeURIComponent(name)}&_count=1&_total=none`;
     const { status, body } = await fhirGet(url, tok.access_token);
     if (body.resourceType !== "Bundle" || !body.entry?.length) {
       msg.innerHTML = `<span class="warn">No results (status ${status}).</span>`;
@@ -260,7 +307,7 @@ async function renderSession(smart, tok, iss) {
   btnObs.onclick = async () => {
     if (!currentPatientId) return;
     printLines([`Fetching Observations (vital-signs) for patient <code>${currentPatientId}</code>…`]);
-    const url = iss.replace(/\/+$/,"") + `/Observation?patient=${encodeURIComponent(currentPatientId)}&category=vital-signs&_count=5`;
+    const url = iss.replace(/\/+$/,"") + `/Observation?patient=${encodeURIComponent(currentPatientId)}&category=vital-signs&_count=5&_total=none`;
     const { status, body } = await fhirGet(url, tok.access_token);
     if (body.resourceType !== "Bundle") {
       printLines([`<span class="err">Observation query failed (status ${status})</span>`,
@@ -280,7 +327,7 @@ async function renderSession(smart, tok, iss) {
   btnCond.onclick = async () => {
     if (!currentPatientId) return;
     printLines([`Fetching Conditions for patient <code>${currentPatientId}</code>…`]);
-    const url = iss.replace(/\/+$/,"") + `/Condition?patient=${encodeURIComponent(currentPatientId)}&_count=5`;
+    const url = iss.replace(/\/+$/,"") + `/Condition?patient=${encodeURIComponent(currentPatientId)}&_count=5&_total=none`;
     const { status, body } = await fhirGet(url, tok.access_token);
     if (body.resourceType !== "Bundle") {
       printLines([`<span class="err">Condition query failed (status ${status})</span>`,
