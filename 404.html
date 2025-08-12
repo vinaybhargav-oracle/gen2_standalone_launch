@@ -1,18 +1,20 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Redirecting…</title>
+  <title>404 – Not Found</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script>
-    (function () {
-      var base = "https://vinaybhargav-oracle.github.io/gen2_standalone_launch/";
-      var target = base + (location.search || "") + (location.hash || "");
-      location.replace(target);
-    })();
-  </script>
+  <style>
+    :root{--bg:#ffffff;--fg:#1a1a1a;--accent:#0b67c2}
+    @media (prefers-color-scheme: dark){:root{--bg:#0f1115;--fg:#f4f4f5}}
+    html,body{background:var(--bg);color:var(--fg)}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;text-align:center}
+    a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  </style>
 </head>
 <body>
-  <p>Redirecting…</p>
+  <h1>404 – Page Not Found</h1>
+  <p>Head back to the app home:</p>
+  <p><a href="https://vinaybhargav-oracle.github.io/gen2_standalone_launch/">gen2_standalone_launch</a></p>
 </body>
 </html>
