@@ -6,41 +6,92 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 780px; margin: 2rem auto; padding: 0 1rem; }
-    code { background: #f5f5f5; padding: 0.2rem 0.4rem; border-radius: 4px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; }
+    code { background: #f5f5f5; padding: 0.15rem 0.35rem; border-radius: 4px; }
     .muted { color: #666; }
+    .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+    input[type="text"] { padding: .5rem .6rem; border-radius: 8px; border: 1px solid #ccc; min-width: 240px; }
+    button { padding: .5rem .8rem; border-radius: 10px; border: 1px solid #bbb; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .card { border: 1px solid #e0e0e0; border-radius: 12px; padding: 1rem; margin: 1rem 0; }
+    .list { margin: .25rem 0 0 1.25rem; }
+    .ok { color: #137333; }
+    .warn { color: #b06000; }
+    .err { color: #b00020; }
+    pre { background: #f7f7f9; padding: .75rem; border-radius: 8px; overflow: auto; }
   </style>
 </head>
 <body>
   <h1>SMART on FHIR – Standalone Launch (Provider)</h1>
+
   <div id="out" class="muted">Loading…</div>
+
+  <div id="app" style="display:none">
+    <div class="card">
+      <h2>Quick Patient Search</h2>
+      <div class="row">
+        <label for="q">Name (≥ 3 chars):</label>
+        <input id="q" type="text" placeholder="e.g., smith, johnson…" />
+        <button id="btnSearch">Search</button>
+        <span id="searchMsg" class="muted"></span>
+      </div>
+      <div id="patientResult" class="muted" style="margin-top:.75rem"></div>
+      <div id="patientActions" class="row" style="margin-top:.5rem; display:none">
+        <button id="btnObs">Fetch Observations (vital-signs)</button>
+        <button id="btnCond">Fetch Conditions</button>
+      </div>
+      <div id="dataOut" class="card" style="display:none">
+        <h3>Data</h3>
+        <div id="dataLines"></div>
+      </div>
+    </div>
+
+    <details>
+      <summary>Debug</summary>
+      <pre id="dbg"></pre>
+    </details>
+  </div>
 
 <script>
 /* ===================== CONFIG ===================== */
-const CLIENT_ID    = "a494da60-3f78-4ea9-bcbc-6a2e943117b6"; // <-- your Cerner/Oracle Health client ID
-const REDIRECT_URI = "https://vinaybhargav-oracle.github.io/gen2_standalone_launch/"; // must exactly match Console
-// Explicit user scopes for Cerner; add/remove reads as needed
-const SCOPE = "openid fhirUser user/Practitioner.read user/Patient.read user/Observation.read online_access";
+const CLIENT_ID    = "a494da60-3f78-4ea9-bcbc-6a2e943117b6"; // your Cerner client id
+const REDIRECT_URI = "https://vinaybhargav-oracle.github.io/gen2_standalone_launch/"; // exact match
+const SCOPE = [
+  "openid","fhirUser",
+  "user/Practitioner.read",
+  "user/Patient.read",
+  "user/Observation.read",
+  "user/Condition.read",
+  "online_access"
+].join(" ");
 
 /* ===================== HELPERS ===================== */
 const enc = new TextEncoder();
-function randString(len=64) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let s = ""; for (let i=0;i<len;i++) s += chars[Math.floor(Math.random()*chars.length)];
-  return s;
-}
-async function sha256(str) {
-  const buf = await crypto.subtle.digest("SHA-256", enc.encode(str));
-  return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
-}
+function randString(len=64){ const c="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"; let s=""; for(let i=0;i<len;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; }
+async function sha256(str){ const buf=await crypto.subtle.digest("SHA-256", enc.encode(str)); return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
 function qs(obj){ return new URLSearchParams(obj).toString(); }
 function getParam(n){ return new URL(location.href).searchParams.get(n); }
 function setOut(html){ document.getElementById("out").innerHTML = html; }
+function show(el){ el.style.display=""; } function hide(el){ el.style.display="none"; }
+function safe(x, d=""){ return (x===undefined||x===null) ? d : x; }
+
 const store = {
   set(k,v){ const s=JSON.stringify(v); sessionStorage.setItem(k,s); localStorage.setItem(k,s); },
   get(k){ const v = sessionStorage.getItem(k) || localStorage.getItem(k); return v ? JSON.parse(v) : null; },
   del(k){ sessionStorage.removeItem(k); localStorage.removeItem(k); }
 };
+
+window.debug = {
+  tokens(){ return store.get("tokens"); },
+  pkce(){ return store.get("pkce"); }
+};
+
+/* Small FHIR GET helper */
+async function fhirGet(url, token) {
+  const r = await fetch(url, { headers: { Authorization: "Bearer " + token, Accept: "application/fhir+json" }});
+  const body = await r.json().catch(() => ({}));
+  return { status: r.status, body };
+}
 
 /* ===================== MAIN ===================== */
 (async function main(){
@@ -48,17 +99,12 @@ const store = {
   const code  = getParam("code");
   const state = getParam("state");
 
-  // Recover iss if missing on callback
+  // recover iss on callback
   if (!iss && code) {
     const saved = store.get("pkce");
-    if (saved && saved.iss) {
-      iss = saved.iss;
-    } else if (state) {
-      try {
-        const json = atob(state.replace(/-/g,'+').replace(/_/g,'/'));
-        const payload = JSON.parse(json);
-        if (payload.iss) iss = payload.iss;
-      } catch(_) {}
+    if (saved?.iss) iss = saved.iss;
+    else if (state) {
+      try { const json = atob(state.replace(/-/g,'+').replace(/_/g,'/')); const payload = JSON.parse(json); if (payload.iss) iss = payload.iss; } catch {}
     }
   }
 
@@ -87,34 +133,26 @@ const store = {
   // Callback: exchange code
   if (code) {
     const saved = store.get("pkce");
-    if (!saved || saved.state !== state) {
-      setOut(`<p>State mismatch or missing PKCE data. Please relaunch.</p>`);
-      return;
-    }
+    if (!saved || saved.state !== state) { setOut(`<p>State mismatch or missing PKCE data. Please relaunch.</p>`); return; }
     try {
-      const tok = await fetch(smart.token_endpoint, {
+      const r = await fetch(smart.token_endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: qs({
-          grant_type: "authorization_code",
-          code,
-          redirect_uri: REDIRECT_URI,
-          client_id: CLIENT_ID,
-          code_verifier: saved.verifier
-        })
-      }).then(r => r.json());
+        body: qs({ grant_type:"authorization_code", code, redirect_uri:REDIRECT_URI, client_id:CLIENT_ID, code_verifier:saved.verifier })
+      });
+      const tok = await r.json();
       if (tok.error) throw new Error(tok.error_description || tok.error);
-
       store.set("tokens", { ...tok, iss });
+      window.__tokens = { ...tok, iss }; // debug helper
       history.replaceState({}, "", REDIRECT_URI + "?iss=" + encodeURIComponent(iss));
-      await showSession(smart, tok, iss);
+      await renderSession(smart, tok, iss);
     } catch (e) {
       setOut(`<p>Token exchange failed: <code>${e.message}</code></p>`);
     }
     return;
   }
 
-  // First leg: start authorization (store iss + pkce; encode iss inside state)
+  // First leg: start authorization
   const verifier  = randString(64);
   const challenge = await sha256(verifier);
   const statePayload = { s: randString(16), iss };
@@ -129,59 +167,134 @@ const store = {
     state: appState,
     code_challenge: challenge,
     code_challenge_method: "S256",
-    aud: iss // Cerner requires aud
+    aud: iss
   };
 
   setOut(`<p>Redirecting to authorization server…</p>`);
   location.href = smart.authorization_endpoint + "?" + qs(authParams);
 })();
 
-/* ===================== UI ===================== */
-async function showSession(smart, tok, iss) {
-  // get fhirUser via userinfo or id_token
+/* ===================== UI RENDER & ACTIONS ===================== */
+async function renderSession(smart, tok, iss) {
+  // fhirUser
   let fhirUser = null;
   if (smart.userinfo_endpoint && tok.access_token) {
-    try {
-      const ui = await fetch(smart.userinfo_endpoint, {
-        headers: { Authorization: "Bearer " + tok.access_token }
-      }).then(r => r.json());
-      fhirUser = ui.fhirUser || null;
-    } catch {}
+    try { const ui = await fhirGet(smart.userinfo_endpoint, tok.access_token); fhirUser = ui.body.fhirUser || null; } catch {}
   }
   if (!fhirUser && tok.id_token) {
     const parts = tok.id_token.split(".");
-    if (parts.length === 3) {
-      try {
-        const payload = JSON.parse(atob(parts[1].replace(/-/g,"+").replace(/_/g,"/")));
-        fhirUser = payload.fhirUser || null;
-      } catch {}
-    }
+    if (parts.length===3) { try { const payload = JSON.parse(atob(parts[1].replace(/-/g,"+").replace(/_/g,"/"))); fhirUser = payload.fhirUser || null; } catch {} }
   }
 
-  let userHtml = `<li><strong>fhirUser</strong>: <em>not provided</em></li>`;
+  // Try to read Practitioner (optional)
+  let practitionerNote = "";
   if (fhirUser) {
-    let suffix = "";
     try {
-      const res = await fetch(fhirUser, { headers: { Authorization: "Bearer " + tok.access_token } });
-      const body = await res.json();
-      if (body && body.resourceType === "OperationOutcome") {
-        suffix = " <span class='muted'>(no read access; add <code>user/Practitioner.read</code> in Console + app)</span>";
-      } else if (body && body.resourceType) {
-        suffix = ` (${body.resourceType} ${body.id || ""})`;
+      const fu = await fhirGet(fhirUser, tok.access_token);
+      if (fu.body?.resourceType === "OperationOutcome") {
+        practitionerNote = ` <span class="muted">(no read access; add <code>user/Practitioner.read</code>)</span>`;
+      } else if (fu.body?.resourceType) {
+        practitionerNote = ` (${fu.body.resourceType} ${safe(fu.body.id,"")})`;
       }
     } catch {}
-    userHtml = `<li><strong>fhirUser</strong>: <code>${fhirUser}</code>${suffix}</li>`;
   }
 
   setOut(`
     <h2>Session</h2>
-    <ul>
-      ${userHtml}
+    <ul class="list">
+      <li><strong>fhirUser</strong>: ${fhirUser ? `<code>${fhirUser}</code>${practitionerNote}` : "<em>not provided</em>"}</li>
       <li><strong>FHIR base</strong>: <code>${iss}</code></li>
       <li><strong>Access token</strong>: received (${tok.token_type || "Bearer"})</li>
     </ul>
-    <p class="muted">You can now call FHIR endpoints with this token.</p>
+    <p class="muted">Use the tools below to run a quick patient search and pull a few resources.</p>
   `);
+
+  // enable app panel
+  const appEl = document.getElementById("app");
+  show(appEl);
+
+  // Debug dump
+  const dbg = document.getElementById("dbg");
+  dbg.textContent = JSON.stringify({ iss, hasToken: !!tok.access_token, scope: tok.scope }, null, 2);
+
+  // Wire up actions
+  const q = document.getElementById("q");
+  const btnSearch = document.getElementById("btnSearch");
+  const msg = document.getElementById("searchMsg");
+  const patientResult = document.getElementById("patientResult");
+  const patientActions = document.getElementById("patientActions");
+  const btnObs = document.getElementById("btnObs");
+  const btnCond = document.getElementById("btnCond");
+  const dataOut = document.getElementById("dataOut");
+  const dataLines = document.getElementById("dataLines");
+
+  let currentPatientId = null;
+
+  function printLines(lines){
+    dataLines.innerHTML = lines.map(l => `<div>${l}</div>`).join("");
+    show(dataOut);
+  }
+
+  btnSearch.onclick = async () => {
+    hide(dataOut); dataLines.innerHTML = "";
+    patientResult.textContent = ""; hide(patientActions);
+    const name = (q.value || "").trim();
+    if (name.length < 3) { msg.textContent = "Enter ≥ 3 characters"; return; }
+    msg.textContent = "Searching…";
+    const url = iss.replace(/\/+$/,"") + `/Patient?name=${encodeURIComponent(name)}&_count=1`;
+    const { status, body } = await fhirGet(url, tok.access_token);
+    if (body.resourceType !== "Bundle" || !body.entry?.length) {
+      msg.innerHTML = `<span class="warn">No results (status ${status}).</span>`;
+      return;
+    }
+    msg.textContent = "";
+    const p = body.entry[0].resource;
+    currentPatientId = p.id;
+    const nm = (p.name?.[0] || {});
+    patientResult.innerHTML =
+      `<div><strong>First match:</strong> <code>${p.id}</code> — ${[nm.text, [nm.given?.[0], nm.family].filter(Boolean).join(" ")].filter(Boolean)[0] || "(no name)"} 
+       ${p.birthDate ? " • DOB: "+p.birthDate : ""} ${p.gender ? " • "+p.gender : ""}</div>`;
+    show(patientActions);
+  };
+
+  btnObs.onclick = async () => {
+    if (!currentPatientId) return;
+    printLines([`Fetching Observations (vital-signs) for patient <code>${currentPatientId}</code>…`]);
+    const url = iss.replace(/\/+$/,"") + `/Observation?patient=${encodeURIComponent(currentPatientId)}&category=vital-signs&_count=5`;
+    const { status, body } = await fhirGet(url, tok.access_token);
+    if (body.resourceType !== "Bundle") {
+      printLines([`<span class="err">Observation query failed (status ${status})</span>`,
+                  `<code>${(body.issue?.[0]?.diagnostics || body.issue?.[0]?.details?.text || body.resourceType || "Error")}</code>`]);
+      return;
+    }
+    const lines = body.entry?.slice(0,5).map(e => {
+      const r = e.resource || {};
+      const code = r.code?.text || r.code?.coding?.[0]?.display || r.code?.coding?.[0]?.code || "Observation";
+      const value = r.valueQuantity ? `${r.valueQuantity.value} ${r.valueQuantity.unit || r.valueQuantity.code || ""}` :
+                    r.valueString || r.valueCodeableConcept?.text || "";
+      return `• ${code}${value ? " — " + value : ""} <span class="muted">(${r.effectiveDateTime || r.issued || r.meta?.lastUpdated || "n/a"})</span>`;
+    }) || [];
+    printLines(lines.length ? lines : ["<span class='warn'>No vital-signs observations found.</span>"]);
+  };
+
+  btnCond.onclick = async () => {
+    if (!currentPatientId) return;
+    printLines([`Fetching Conditions for patient <code>${currentPatientId}</code>…`]);
+    const url = iss.replace(/\/+$/,"") + `/Condition?patient=${encodeURIComponent(currentPatientId)}&_count=5`;
+    const { status, body } = await fhirGet(url, tok.access_token);
+    if (body.resourceType !== "Bundle") {
+      printLines([`<span class="err">Condition query failed (status ${status})</span>`,
+                  `<code>${(body.issue?.[0]?.diagnostics || body.issue?.[0]?.details?.text || body.resourceType || "Error")}</code>`]);
+      return;
+    }
+    const lines = body.entry?.slice(0,5).map(e => {
+      const r = e.resource || {};
+      const code = r.code?.text || r.code?.coding?.[0]?.display || r.code?.coding?.[0]?.code || "Condition";
+      const onset = r.onsetDateTime || r.recordedDate || r.meta?.lastUpdated || "n/a";
+      return `• ${code} <span class="muted">(onset: ${onset})</span>`;
+    }) || [];
+    printLines(lines.length ? lines : ["<span class='warn'>No conditions found.</span>"]);
+  };
 }
 </script>
 </body>
