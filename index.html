@@ -2,82 +2,75 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>SMART on FHIR – Standalone Launch (Provider)</title>
+  <title>SMART on FHIR – Standalone Launch (Provider, SMART v2)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    /* Light/Dark themed, but readable in both */
+    /* Light & dark, readable in both */
     :root{
-      --bg: #ffffff;
-      --fg: #1a1a1a;
-      --muted:#666;
-      --card:#ffffff;
-      --border:#e0e0e0;
-      --code:#f6f6f6;
-      --accent:#0b67c2;
-      --warn:#b06000;
-      --err:#b00020;
-      --ok:#137333;
-      --shadow: 0 2px 8px rgba(0,0,0,.06);
+      --bg:#ffffff; --fg:#1a1a1a; --muted:#666;
+      --card:#ffffff; --border:#e0e0e0; --code:#f6f6f6;
+      --ok:#137333; --warn:#b06000; --err:#b00020;
+      --shadow:0 2px 8px rgba(0,0,0,.06);
     }
     @media (prefers-color-scheme: dark){
       :root{
         --bg:#0f1115; --fg:#f4f4f5; --muted:#a0a0a0;
         --card:#141821; --border:#2a2f3a; --code:#1b2030;
-        --shadow: 0 2px 12px rgba(0,0,0,.35);
+        --shadow:0 2px 12px rgba(0,0,0,.35);
       }
     }
-    html, body { background: var(--bg); color: var(--fg); }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-    h1 { margin: 0 0 1rem; }
-    h2 { margin: 1.25rem 0 .5rem; }
-    .muted{ color: var(--muted); }
-    .card{ background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; box-shadow: var(--shadow); margin: 1rem 0; }
-    .list{ margin: .25rem 0 0 1.25rem; }
-    .row{ display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; }
-    input[type="text"]{ background: var(--card); color: var(--fg); border:1px solid var(--border); border-radius:8px; padding:.5rem .6rem; min-width:240px; }
-    button{ background:transparent; color:var(--fg); border:1px solid var(--border); border-radius:10px; padding:.5rem .8rem; cursor:pointer; }
-    button:hover{ border-color:#9aa3af; }
-    button:disabled{ opacity:.6; cursor:not-allowed; }
-    code{ background: var(--code); padding:.15rem .35rem; border-radius:4px; }
-    pre{ background: var(--code); padding:.75rem; border-radius:8px; overflow:auto; }
-    .ok{ color:var(--ok); } .warn{ color:var(--warn);} .err{ color:var(--err);}
-    .kv{ display:grid; grid-template-columns: 220px 1fr; gap:.35rem .75rem; }
-    .kv div:nth-child(odd){ color:var(--muted); }
+    html,body{background:var(--bg);color:var(--fg)}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem}
+    h1{margin:0 0 1rem} h2{margin:1.25rem 0 .5rem}
+    .muted{color:var(--muted)}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1rem;box-shadow:var(--shadow);margin:1rem 0}
+    .list{margin:.25rem 0 0 1.25rem}
+    .row{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
+    input[type="text"]{background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:.5rem .6rem;min-width:240px}
+    button{background:transparent;color:var(--fg);border:1px solid var(--border);border-radius:10px;padding:.5rem .8rem;cursor:pointer}
+    button:hover{border-color:#9aa3af} button:disabled{opacity:.6;cursor:not-allowed}
+    code{background:var(--code);padding:.15rem .35rem;border-radius:4px}
+    pre{background:var(--code);padding:.75rem;border-radius:8px;overflow:auto}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+    .kv{display:grid;grid-template-columns:220px 1fr;gap:.35rem .75rem}
+    .kv div:nth-child(odd){color:var(--muted)}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
   </style>
 </head>
 <body>
-  <h1>SMART on FHIR – Standalone Launch (Provider)</h1>
+  <h1>SMART on FHIR – Standalone Launch (Provider, SMART v2)</h1>
 
   <div id="out" class="muted">Loading…</div>
 
   <div id="app" style="display:none">
-    <!-- Guaranteed calls -->
+    <!-- Guaranteed calls / session -->
     <div class="card">
-      <h2>Server & Session (Guaranteed Calls)</h2>
-      <div class="kv" id="guaranteed">
+      <h2>Server & Session</h2>
+      <div class="kv">
         <div>FHIR base</div><div><code id="gv-iss"></code></div>
         <div>Access token</div><div id="gv-token" class="ok">received</div>
-        <div>SMART auth endpoint</div><div><code id="gv-auth"></code></div>
-        <div>SMART token endpoint</div><div><code id="gv-tokenep"></code></div>
         <div>CapabilityStatement</div><div id="gv-cap" class="muted">loading…</div>
         <div>UserInfo</div><div id="gv-ui" class="muted">loading…</div>
       </div>
     </div>
 
-    <!-- Quick patient tools (may depend on tenant data/policies) -->
+    <!-- Patient tools -->
     <div class="card">
-      <h2>Quick Patient Search</h2>
+      <h2>Quick Patient Search → Auto-load Patient/{id}</h2>
       <div class="row">
         <label for="q">Name (≥ 3 chars):</label>
         <input id="q" type="text" placeholder="e.g., smith, johnson…" />
         <button id="btnSearch">Search</button>
         <span id="searchMsg" class="muted"></span>
       </div>
-      <div id="patientResult" class="muted" style="margin-top:.75rem"></div>
-      <div id="patientActions" class="row" style="margin-top:.5rem; display:none">
+
+      <div id="patientSummary" style="margin-top:.75rem"></div>
+
+      <div id="patientActions" class="row" style="margin-top:.75rem; display:none">
         <button id="btnObs">Fetch Observations (vital-signs)</button>
         <button id="btnCond">Fetch Conditions</button>
       </div>
+
       <div id="dataOut" class="card" style="display:none">
         <h3>Data</h3>
         <div id="dataLines"></div>
@@ -91,10 +84,11 @@
   </div>
 
 <script>
-/* ===================== CONFIG ===================== */
-const CLIENT_ID    = "7359e531-5603-483f-950e-bb5ce9ef3c63"; // your SMART v2 client id
-const REDIRECT_URI = "https://vinaybhargav-oracle.github.io/gen2_standalone_launch/"; // must match registration
-// Include 'profile' so userinfo yields richer claims; keep v2 resource scopes for your buttons
+/* ===================== CONFIG (SMART v2) ===================== */
+const CLIENT_ID    = "7359e531-5603-483f-950e-bb5ce9ef3c63";   // your v2 client id
+const REDIRECT_URI = "https://vinaybhargav-oracle.github.io/gen2_standalone_launch/";
+
+/* v2 scopes: user/*.rs + OIDC basic; 'profile' helps userinfo return a name */
 const SCOPE = [
   "openid","profile","fhirUser",
   "user/Practitioner.rs",
@@ -106,51 +100,40 @@ const SCOPE = [
 
 /* ===================== HELPERS ===================== */
 const enc = new TextEncoder();
-function randString(len=64){ const c="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"; let s=""; for(let i=0;i<len;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; }
-async function sha256(str){ const buf=await crypto.subtle.digest("SHA-256", enc.encode(str)); return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
-function qs(obj){ return new URLSearchParams(obj).toString(); }
-function getParam(n){ return new URL(location.href).searchParams.get(n); }
-function setOut(html){ document.getElementById("out").innerHTML = html; }
-function show(el){ el.style.display=""; } function hide(el){ el.style.display="none"; }
-function safe(x, d=""){ return (x===undefined||x===null) ? d : x; }
+function randString(len=64){const c="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";let s="";for(let i=0;i<len;i++)s+=c[Math.floor(Math.random()*c.length)];return s;}
+async function sha256(str){const buf=await crypto.subtle.digest("SHA-256",enc.encode(str));return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
+function qs(obj){return new URLSearchParams(obj).toString();}
+function getParam(n){return new URL(location.href).searchParams.get(n);}
+function setOut(html){document.getElementById("out").innerHTML=html;}
+function show(el){el.style.display="";} function hide(el){el.style.display="none";}
+function joinNonEmpty(arr, sep=" "){return (arr||[]).filter(Boolean).join(sep);}
+function fmtAddress(a){if(!a) return "";const lines=[a.text,joinNonEmpty(a.line,", "),[a.city,a.state].filter(Boolean).join(", "),a.postalCode,a.country].filter(Boolean);return lines.join(" • ");}
+function fmtTelecom(t){if(!t||!t.length) return "";return t.map(x=>`${x.system||"tel"}:${x.value}${x.use?` (${x.use})`:""}`).join(" • ");}
 
-const store = {
-  set(k,v){ const s=JSON.stringify(v); sessionStorage.setItem(k,s); localStorage.setItem(k,s); },
-  get(k){ const v = sessionStorage.getItem(k) || localStorage.getItem(k); return v ? JSON.parse(v) : null; },
-  del(k){ sessionStorage.removeItem(k); localStorage.removeItem(k); }
-};
-
-window.debug = { tokens(){ return store.get("tokens"); }, pkce(){ return store.get("pkce"); } };
-
-/* Small FHIR GET helper */
-async function fhirGet(url, token) {
-  const r = await fetch(url, { headers: { Authorization: "Bearer " + token, Accept: "application/fhir+json" }});
-  const body = await r.json().catch(() => ({}));
-  return { status: r.status, body, headers: r.headers };
+async function fhirGet(url, token){
+  const r = await fetch(url,{headers:{Authorization:"Bearer "+token,Accept:"application/fhir+json"}});
+  const body = await r.json().catch(()=>({}));
+  return { status:r.status, body };
 }
 
 /* ===================== MAIN ===================== */
 (async function main(){
-  let iss   = getParam("iss");
+  let iss = getParam("iss");
   const code  = getParam("code");
   const state = getParam("state");
 
   // recover iss on callback
   if (!iss && code) {
-    const saved = store.get("pkce");
-    if (saved?.iss) iss = saved.iss;
-    else if (state) {
-      try { const json = atob(state.replace(/-/g,'+').replace(/_/g,'/')); const payload = JSON.parse(json); if (payload.iss) iss = payload.iss; } catch {}
-    }
+    const saved = sessionStorage.getItem("pkce");
+    if (saved) { try { iss = JSON.parse(saved).iss; } catch {} }
   }
 
   if (!iss && !code) {
     setOut(`
       <p>Add <code>?iss=&lt;FHIR_BASE_URL&gt;</code> to the URL to start.</p>
       <p>Example:</p>
-      <p><code>${REDIRECT_URI}?iss=https://fhir-ehr-code.cerner.com/r4/ec2458f2-1e24-41c8-b71b-0e701af7583d</code></p>
-    `);
-    return;
+      <p class="mono"><code>${REDIRECT_URI}?iss=https://fhir-ehr-code.cerner.com/r4/ec2458f2-1e24-41c8-b71b-0e701af7583d</code></p>
+    `); return;
   }
   if (!iss) { setOut(`<p>Missing <code>iss</code>. Please relaunch with <code>?iss=...</code>.</p>`); return; }
 
@@ -162,13 +145,12 @@ async function fhirGet(url, token) {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     smart = await r.json();
   } catch (e) {
-    setOut(`<p>SMART discovery failed at <code>${smartCfgUrl}</code>: <code>${e.message}</code></p>`);
-    return;
+    setOut(`<p>SMART discovery failed at <code>${smartCfgUrl}</code>: <code>${e.message}</code></p>`); return;
   }
 
   // Callback: exchange code
   if (code) {
-    const saved = store.get("pkce");
+    const saved = JSON.parse(sessionStorage.getItem("pkce")||"{}");
     if (!saved || saved.state !== state) { setOut(`<p>State mismatch or missing PKCE data. Please relaunch.</p>`); return; }
     try {
       const r = await fetch(smart.token_endpoint, {
@@ -179,8 +161,7 @@ async function fhirGet(url, token) {
       const tok = await r.json();
       if (tok.error) throw new Error(tok.error_description || tok.error);
 
-      store.set("tokens", { ...tok, iss, userinfo_endpoint: smart.userinfo_endpoint });
-      window.__tokens = { ...tok, iss, userinfo_endpoint: smart.userinfo_endpoint }; // debug helper
+      sessionStorage.setItem("tokens", JSON.stringify({...tok, iss, userinfo_endpoint: smart.userinfo_endpoint}));
       history.replaceState({}, "", REDIRECT_URI + "?iss=" + encodeURIComponent(iss));
       await renderSession(smart, tok, iss);
     } catch (e) {
@@ -189,12 +170,11 @@ async function fhirGet(url, token) {
     return;
   }
 
-  // First leg: start authorization
+  // First leg: auth with PKCE
   const verifier  = randString(64);
   const challenge = await sha256(verifier);
-  const statePayload = { s: randString(16), iss };
-  const appState = btoa(JSON.stringify(statePayload)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-  store.set("pkce", { verifier, state: appState, iss });
+  const appState  = randString(24);
+  sessionStorage.setItem("pkce", JSON.stringify({ verifier, state: appState, iss }));
 
   const authParams = {
     response_type: "code",
@@ -211,14 +191,12 @@ async function fhirGet(url, token) {
   location.href = smart.authorization_endpoint + "?" + qs(authParams);
 })();
 
-/* ===================== UI RENDER & ACTIONS ===================== */
-async function renderSession(smart, tok, iss) {
-  // Guaranteed: show discovery (auth/token endpoints)
+/* ===================== RENDER ===================== */
+async function renderSession(smart, tok, iss){
+  // Show basics
   document.getElementById("gv-iss").textContent = iss;
-  document.getElementById("gv-auth").textContent = smart.authorization_endpoint || "(n/a)";
-  document.getElementById("gv-tokenep").textContent = smart.token_endpoint || "(n/a)";
 
-  // CapabilityStatement (very reliable)
+  // CapabilityStatement
   (async ()=>{
     const { status, body } = await fhirGet(iss.replace(/\/+$/,"") + "/metadata", tok.access_token);
     const capEl = document.getElementById("gv-cap");
@@ -230,7 +208,7 @@ async function renderSession(smart, tok, iss) {
     }
   })();
 
-  // UserInfo (works with openid; profile helps return name)
+  // UserInfo
   (async ()=>{
     const uiEl = document.getElementById("gv-ui");
     if (!smart.userinfo_endpoint){ uiEl.textContent = "no userinfo endpoint advertised"; return; }
@@ -243,36 +221,21 @@ async function renderSession(smart, tok, iss) {
       } else {
         uiEl.innerHTML = `<span class="warn">no claims</span> — status ${status}`;
       }
-    }catch(e){
-      uiEl.innerHTML = `<span class="warn">failed</span>`;
-    }
+    }catch(e){ uiEl.innerHTML = `<span class="warn">failed</span>`; }
   })();
 
-  // Session header + panel
-  setOut(`
-    <h2>Session</h2>
-    <ul class="list">
-      <li><strong>fhirUser</strong>: <em>resolved via userinfo/id_token if provided</em></li>
-      <li><strong>FHIR base</strong>: <code>${iss}</code></li>
-      <li><strong>Access token</strong>: received (${tok.token_type || "Bearer"})</li>
-    </ul>
-    <p class="muted">Guaranteed calls above should succeed broadly. Patient tools below depend on tenant data & policies.</p>
-  `);
-
-  // enable app panel
-  show(document.getElementById("app"));
-
-  // Debug dump
+  // Enable UI
+  document.getElementById("app").style.display = "";
   document.getElementById("dbg").textContent = JSON.stringify(
-    { iss, hasToken: !!tok.access_token, scope: tok.scope, userinfo_endpoint: smart.userinfo_endpoint || null },
+    { iss, scope: tok.scope, userinfo_endpoint: smart.userinfo_endpoint || null },
     null, 2
   );
 
-  // Patient/Observation/Condition helpers (may depend on tenant)
+  // Patient tools
   const q = document.getElementById("q");
   const btnSearch = document.getElementById("btnSearch");
   const msg = document.getElementById("searchMsg");
-  const patientResult = document.getElementById("patientResult");
+  const patientSummary = document.getElementById("patientSummary");
   const patientActions = document.getElementById("patientActions");
   const btnObs = document.getElementById("btnObs");
   const btnCond = document.getElementById("btnCond");
@@ -280,39 +243,70 @@ async function renderSession(smart, tok, iss) {
   const dataLines = document.getElementById("dataLines");
 
   let currentPatientId = null;
-  function printLines(lines){ dataLines.innerHTML = lines.map(l => `<div>${l}</div>`).join(""); show(dataOut); }
+
+  function printLines(lines){ dataLines.innerHTML = lines.map(l => `<div>${l}</div>`).join(""); dataOut.style.display=""; }
 
   btnSearch.onclick = async () => {
-    hide(dataOut); dataLines.innerHTML = "";
-    patientResult.textContent = ""; hide(patientActions);
+    dataOut.style.display="none"; dataLines.innerHTML = "";
+    patientSummary.innerHTML = ""; patientActions.style.display="none";
     const name = (q.value || "").trim();
     if (name.length < 3) { msg.textContent = "Enter ≥ 3 characters"; return; }
     msg.textContent = "Searching…";
-    const url = iss.replace(/\/+$/,"") + `/Patient?name=${encodeURIComponent(name)}&_count=1&_total=none`;
-    const { status, body } = await fhirGet(url, tok.access_token);
-    if (body.resourceType !== "Bundle" || !body.entry?.length) {
-      msg.innerHTML = `<span class="warn">No results (status ${status}).</span>`;
-      return;
+
+    // 1) Search for a patient (lightweight)
+    const searchUrl = iss.replace(/\/+$/,"") + `/Patient?name=${encodeURIComponent(name)}&_count=1&_total=none`;
+    const { status: s1, body: b1 } = await fhirGet(searchUrl, tok.access_token);
+    if (b1.resourceType !== "Bundle" || !b1.entry?.length) {
+      msg.innerHTML = `<span class="warn">No results (status ${s1}).</span>`; return;
     }
     msg.textContent = "";
-    const p = body.entry[0].resource;
+    const p = b1.entry[0].resource;
     currentPatientId = p.id;
-    const nm = (p.name?.[0] || {});
-    patientResult.innerHTML =
-      `<div><strong>First match:</strong> <code>${p.id}</code> — ${[nm.text, [nm.given?.[0], nm.family].filter(Boolean).join(" ")].filter(Boolean)[0] || "(no name)"} 
-       ${p.birthDate ? " • DOB: "+p.birthDate : ""} ${p.gender ? " • "+p.gender : ""}</div>`;
-    show(patientActions);
+
+    // 2) AUTO-READ Patient/{id}
+    const readUrl = iss.replace(/\/+$/,"") + `/Patient/${encodeURIComponent(currentPatientId)}`;
+    const { status: s2, body: patient } = await fhirGet(readUrl, tok.access_token);
+
+    if (patient.resourceType === "OperationOutcome") {
+      patientSummary.innerHTML = `<div class="err">Patient read denied or failed (status ${s2}).</div><pre>${JSON.stringify(patient, null, 2)}</pre>`;
+      return;
+    }
+    // Render a tidy summary
+    const nm = (patient.name?.[0]||{});
+    const fullName = nm.text || joinNonEmpty([joinNonEmpty(nm.given), nm.family]);
+    const mrns = (patient.identifier||[])
+      .map(id => id.value ? `${id.value}${id.system ? ` (${id.system})`:""}` : "")
+      .filter(Boolean)
+      .slice(0,5)
+      .join(" • ");
+    const addr = fmtAddress((patient.address||[])[0]);
+    const tel  = fmtTelecom(patient.telecom||[]);
+    const org  = patient.managingOrganization?.reference || "";
+    const flags = [
+      patient.gender ? `gender: <code>${patient.gender}</code>`:"",
+      patient.birthDate ? `dob: <code>${patient.birthDate}</code>`:"",
+      patient.deceasedDateTime ? `deceased: <code>${patient.deceasedDateTime}</code>` : (patient.deceasedBoolean ? "deceased: <code>true</code>": "")
+    ].filter(Boolean).join(" • ");
+
+    patientSummary.innerHTML = `
+      <div><strong>Patient</strong>: <code>${patient.id}</code> — ${fullName || "(no name)"}${flags?` • ${flags}`:""}</div>
+      ${mrns ? `<div class="muted">Identifiers: ${mrns}</div>` : ""}
+      ${addr ? `<div class="muted">Address: ${addr}</div>` : ""}
+      ${tel  ? `<div class="muted">Telecom: ${tel}</div>` : ""}
+      ${org  ? `<div class="muted">Managing Organization: <code>${org}</code></div>` : ""}
+    `;
+
+    patientActions.style.display="";
   };
 
   btnObs.onclick = async () => {
     if (!currentPatientId) return;
-    printLines([`Fetching Observations (vital-signs) for patient <code>${currentPatientId}</code>…`]);
+    printLines([`Fetching Observations (vital-signs) for <code>${currentPatientId}</code>…`]);
     const url = iss.replace(/\/+$/,"") + `/Observation?patient=${encodeURIComponent(currentPatientId)}&category=vital-signs&_count=5&_total=none`;
     const { status, body } = await fhirGet(url, tok.access_token);
     if (body.resourceType !== "Bundle") {
       printLines([`<span class="err">Observation query failed (status ${status})</span>`,
-                  `<code>${(body.issue?.[0]?.diagnostics || body.issue?.[0]?.details?.text || body.resourceType || "Error")}</code>`]);
-      return;
+                  `<code>${(body.issue?.[0]?.diagnostics || body.issue?.[0]?.details?.text || body.resourceType || "Error")}</code>`]); return;
     }
     const lines = body.entry?.slice(0,5).map(e => {
       const r = e.resource || {};
@@ -326,13 +320,12 @@ async function renderSession(smart, tok, iss) {
 
   btnCond.onclick = async () => {
     if (!currentPatientId) return;
-    printLines([`Fetching Conditions for patient <code>${currentPatientId}</code>…`]);
+    printLines([`Fetching Conditions for <code>${currentPatientId}</code>…`]);
     const url = iss.replace(/\/+$/,"") + `/Condition?patient=${encodeURIComponent(currentPatientId)}&_count=5&_total=none`;
     const { status, body } = await fhirGet(url, tok.access_token);
     if (body.resourceType !== "Bundle") {
       printLines([`<span class="err">Condition query failed (status ${status})</span>`,
-                  `<code>${(body.issue?.[0]?.diagnostics || body.issue?.[0]?.details?.text || body.resourceType || "Error")}</code>`]);
-      return;
+                  `<code>${(body.issue?.[0]?.diagnostics || body.issue?.[0]?.details?.text || body.resourceType || "Error")}</code>`]); return;
     }
     const lines = body.entry?.slice(0,5).map(e => {
       const r = e.resource || {};
